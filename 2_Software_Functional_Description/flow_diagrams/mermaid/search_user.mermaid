@@ -1,0 +1,64 @@
+sequenceDiagram
+    participant User as Utilisateur Chercheur
+    participant MobileApp as Application Mobile
+    participant API as API Gateway
+    participant UserService as user-service
+    participant IdentityService as identity-service
+    participant TargetUser as Utilisateur Cible
+
+    alt Recherche par numéro de téléphone
+        User->>MobileApp: Saisit un numéro de téléphone
+        MobileApp->>API: GET /api/v1/users/search?phone=123456789
+        API->>UserService: Transmission de la requête de recherche
+        UserService->>IdentityService: Vérification de l'existence du numéro
+        IdentityService-->>UserService: Confirme existence + ID utilisateur
+        UserService->>UserService: Vérification des paramètres de confidentialité
+        
+        alt Utilisateur cible autorise la recherche par numéro
+            UserService->>UserService: Vérification si l'utilisateur chercheur est bloqué
+            alt Utilisateur chercheur n'est pas bloqué
+                UserService-->>API: Retourne les informations du profil (selon niveau de visibilité)
+                API-->>MobileApp: Transmission du résultat
+                MobileApp-->>User: Affichage du profil trouvé
+            else Utilisateur chercheur est bloqué
+                UserService-->>API: Retourne "Utilisateur non trouvé"
+                API-->>MobileApp: Transmission du résultat
+                MobileApp-->>User: Affichage "Utilisateur non trouvé"
+            end
+        else Utilisateur cible n'autorise pas la recherche par numéro
+            UserService-->>API: Retourne "Utilisateur non trouvé"
+            API-->>MobileApp: Transmission du résultat
+            MobileApp-->>User: Affichage "Utilisateur non trouvé"
+        end
+    else Recherche par nom d'utilisateur
+        User->>MobileApp: Saisit un nom d'utilisateur
+        MobileApp->>API: GET /api/v1/users/search?username=username123
+        API->>UserService: Transmission de la requête de recherche
+        UserService->>UserService: Recherche du nom d'utilisateur
+        
+        alt Nom d'utilisateur existe
+            UserService->>UserService: Vérification si profil est visible dans les résultats de recherche
+            alt Profil visible dans la recherche
+                UserService->>UserService: Vérification si l'utilisateur chercheur est bloqué
+                alt Utilisateur chercheur n'est pas bloqué
+                    UserService-->>API: Retourne les informations du profil (selon niveau de visibilité)
+                    API-->>MobileApp: Transmission du résultat
+                    MobileApp-->>User: Affichage du profil trouvé
+                else Utilisateur chercheur est bloqué
+                    UserService-->>API: Retourne "Utilisateur non trouvé"
+                    API-->>MobileApp: Transmission du résultat
+                    MobileApp-->>User: Affichage "Utilisateur non trouvé"
+                end
+            else Profil non visible dans la recherche
+                UserService-->>API: Retourne "Utilisateur non trouvé"
+                API-->>MobileApp: Transmission du résultat
+                MobileApp-->>User: Affichage "Utilisateur non trouvé"
+            end
+        else Nom d'utilisateur n'existe pas
+            UserService-->>API: Retourne "Utilisateur non trouvé"
+            API-->>MobileApp: Transmission du résultat
+            MobileApp-->>User: Affichage "Utilisateur non trouvé"
+        end
+    end
+
+    Note over UserService,TargetUser: Les paramètres de confidentialité peuvent inclure:<br/>1. Visibilité du profil dans la recherche<br/>2. Qui peut chercher par numéro de téléphone<br/>3. Visibilité de chaque élément du profil<br/>   (photo, prénom, nom, bio)

@@ -1,0 +1,58 @@
+sequenceDiagram
+    participant UserApp as Application Utilisateur
+    participant API as API Gateway
+    participant IS as identity-service
+    participant DS as delivery-service
+    participant OtherApps as Applications des Contacts
+    
+    Note over UserApp: Rotation périodique ou<br/>déclenchée manuellement
+    
+    UserApp->>UserApp: Génère nouvelles clés éphémères (preKeys)
+    UserApp->>UserApp: Génère nouvelle clé signée (signed preKey)
+    UserApp->>UserApp: Conserve l'ancienne clé d'identité
+    
+    UserApp->>API: POST /api/v1/auth/keys/upload
+    API->>IS: Transmission des nouvelles clés
+    
+    IS->>IS: Vérifie signature des clés avec la clé d'identité
+    IS->>IS: Stocke les nouvelles preKeys
+    IS->>IS: Archive l'ancienne signed preKey (garde temporairement)
+    
+    alt Rotation de la clé d'identité (moins fréquente)
+        UserApp->>UserApp: Génère nouvelle paire de clés d'identité
+        UserApp->>UserApp: Signe les preKeys avec la nouvelle clé d'identité
+        UserApp->>API: POST /api/v1/auth/keys/identity/update
+        API->>IS: Transmission de la nouvelle clé d'identité
+        
+        IS->>IS: Vérifie signature avec l'ancienne clé d'identité
+        IS->>IS: Archive l'ancienne clé d'identité (conservation limitée)
+        IS->>IS: Active la nouvelle clé d'identité
+        
+        Note over UserApp,IS: Notifications aux appareils de l'utilisateur
+        IS->>UserApp: Synchronisation de la nouvelle clé d'identité
+        
+        Note over UserApp,OtherApps: Notification aux contacts établis
+        UserApp->>API: POST /api/v1/messages (message de sécurité chiffré)
+        API->>DS: Distribution du message de clé
+        DS-->>OtherApps: Notification de changement de clé
+        
+        OtherApps->>OtherApps: Affiche notification de sécurité
+        OtherApps->>OtherApps: Met à jour la clé d'identité stockée
+        OtherApps->>OtherApps: Propose vérification du code de sécurité
+    end
+    
+    IS-->>API: Confirmation du stockage des clés
+    API-->>UserApp: Confirmation de la rotation des clés
+    
+    Note over UserApp: Les anciennes sessions continuent à fonctionner
+    
+    alt Nouvelle conversation après rotation
+        OtherApps->>API: GET /api/v1/auth/prekeys/{userId}
+        API->>IS: Demande des preKeys de l'utilisateur
+        IS-->>API: Retourne les nouvelles preKeys disponibles
+        API-->>OtherApps: Transmission des nouvelles preKeys
+        
+        OtherApps->>OtherApps: Établit une nouvelle session avec les clés fraîches
+    end
+    
+    Note over UserApp,OtherApps: Le Double Ratchet continue d'avancer<br/>indépendamment pour chaque conversation<br/>assurant la confidentialité persistante
