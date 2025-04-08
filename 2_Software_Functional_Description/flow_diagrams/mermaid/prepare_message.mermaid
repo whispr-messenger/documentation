@@ -1,0 +1,29 @@
+sequenceDiagram
+    participant Sender as Expéditeur
+    participant SenderApp as Application (Expéditeur)
+    participant API as API Gateway
+    participant IS as identity-service
+    
+    Sender->>SenderApp: Rédige un message
+    
+    alt Message privé
+        SenderApp->>SenderApp: Vérifie session Signal existante
+        
+        alt Nouvelle session
+            SenderApp->>API: GET /api/v1/auth/prekeys/{userId}
+            API->>IS: Demande preKeys du destinataire
+            IS-->>API: Retourne les preKeys disponibles
+            API-->>SenderApp: Transmission des preKeys
+            SenderApp->>SenderApp: Initialisation session Signal (X3DH)
+        end
+        
+        SenderApp->>SenderApp: Chiffrement du message avec protocole Double Ratchet
+    else Message de groupe
+        SenderApp->>SenderApp: Récupère la clé de groupe Signal
+        SenderApp->>SenderApp: Chiffrement du message avec la clé de groupe
+    end
+    
+    SenderApp->>SenderApp: Signature du message avec clé privée
+    SenderApp->>SenderApp: Ajout métadonnées (horodatage, ID conversation)
+    
+    Note over SenderApp: Le message est maintenant prêt<br/>pour l'envoi ou l'ajout de médias

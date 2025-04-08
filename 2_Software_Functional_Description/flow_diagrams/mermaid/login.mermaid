@@ -1,0 +1,39 @@
+sequenceDiagram
+    participant User as Utilisateur
+    participant MobileApp as Application Mobile
+    participant API as API Gateway
+    participant Identity as Identity Service
+    participant SMS as Service SMS
+    participant User2 as Appareil Déjà Authentifié
+
+    alt Connexion avec Numéro de Téléphone
+        User->>MobileApp: Saisit du numéro de téléphone
+        MobileApp->>API: POST /api/v1/auth/login (numéro)
+        API->>Identity: Transmission demande d'authentification
+        Identity->>SMS: Génère et envoie code de vérification
+        SMS-->>User: Envoie SMS avec code
+        User->>MobileApp: Saisit du code de vérification
+        MobileApp->>API: POST /api/v1/auth/verify (code)
+        API->>Identity: Transmission demande de validation
+        Identity->>Identity: Vérification du code
+        Identity-->>API: Envoi token d'authentification (JWT)
+        API-->>MobileApp: Retour du token
+        MobileApp->>MobileApp: Stockage sécurisé du token
+        MobileApp->>Identity: Récupération des clés Signal
+        Identity-->>MobileApp: Clés Signal pour chiffrement E2E
+        MobileApp-->>User: Connexion réussie
+    else Connexion via QR Code
+        User->>MobileApp: Demande de connexion par QR
+        MobileApp->>MobileApp: Génération QR code avec challenge temporaire
+        MobileApp-->>User: Affichage du QR code
+        User->>User2: Scan du QR code avec appareil authentifié
+        User2->>User2: Décodage du challenge
+        User2->>API: POST /api/v1/auth/scan-login (challenge, identifiants)
+        API->>Identity: Transmission du challenge pour vérification
+        Identity->>Identity: Validation des identifiants et du challenge
+        Identity-->>API: Envoi nouveau token d'authentification
+        API-->>MobileApp: Retour du token
+        MobileApp->>Identity: Synchronisation des clés Signal
+        Identity-->>MobileApp: Envoi des clés préexistantes
+        MobileApp-->>User: Connexion réussie
+    end

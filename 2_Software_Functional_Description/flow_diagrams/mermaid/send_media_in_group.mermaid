@@ -1,0 +1,59 @@
+sequenceDiagram
+    participant Sender as Expéditeur
+    participant SenderApp as Application (Expéditeur)
+    participant API as API Gateway
+    participant IS as identity-service
+    participant MS as media-service
+    participant MOD as moderation-service
+    participant DS as delivery-service
+    participant Receivers as Destinataires
+
+    Sender->>SenderApp: Sélectionne un média à envoyer au groupe
+    
+    Note over SenderApp: Modération du média
+    SenderApp->>SenderApp: Génère un hash perceptuel (LSH) du média
+    SenderApp->>API: POST /api/v1/moderation/hash-check (hash perceptuel)
+    API->>MOD: Vérification du hash
+    MOD-->>API: Confirmation média acceptable
+    API-->>SenderApp: Autorisation d'envoi
+    
+    Note over SenderApp: Préparation du média
+    SenderApp->>SenderApp: Génère une clé AES unique pour le média
+    SenderApp->>SenderApp: Chiffre le média avec la clé AES
+    
+    Note over SenderApp: Upload du média (une seule fois)
+    SenderApp->>API: POST /api/v1/media/upload (média chiffré)
+    API->>MS: Stockage du média chiffré
+    MS-->>API: Retourne l'ID du média
+    API-->>SenderApp: Transmission de l'ID média
+    
+    Note over SenderApp: Récupération des clés des destinataires
+    SenderApp->>API: GET /api/v1/groups/{groupId}/members
+    API->>DS: Demande liste des membres
+    DS-->>API: Retourne liste des membres
+    API-->>SenderApp: Transmission liste des membres
+    
+    loop Pour chaque destinataire
+        alt Nouvelle session Signal
+            SenderApp->>API: GET /api/v1/auth/prekeys/{userId}
+            API->>IS: Demande preKeys du destinataire
+            IS-->>API: Retourne preKeys disponibles
+            API-->>SenderApp: Transmission preKeys
+            SenderApp->>SenderApp: Initialisation session Signal (X3DH)
+        end
+    end
+    
+    Note over SenderApp: Distribution de la clé AES
+    loop Pour chaque destinataire
+        SenderApp->>SenderApp: Chiffre la clé AES avec la clé Signal du destinataire
+        SenderApp->>SenderApp: Prépare message avec ID média + clé AES chiffrée
+        SenderApp->>API: POST /api/v1/messages (message chiffré)
+        API->>DS: Transmission du message
+    end
+    
+    DS-->>DS: Stockage des messages pour distribution
+    DS-->>Receivers: Notification aux destinataires
+    
+    SenderApp-->>Sender: Confirmation d'envoi
+
+    Note over SenderApp,Receivers: Le média n'est stocké qu'une seule fois,<br/>mais la clé AES est chiffrée individuellement<br/>pour chaque destinataire

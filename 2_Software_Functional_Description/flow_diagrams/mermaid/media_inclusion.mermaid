@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant Sender as Expéditeur
+    participant SenderApp as Application (Expéditeur)
+    participant API as API Gateway
+    participant MS as media-service
+    
+    Sender->>SenderApp: Attache un média au message
+    SenderApp->>SenderApp: Génère clé AES aléatoire pour le média
+    SenderApp->>SenderApp: Chiffre le média avec la clé AES
+    SenderApp->>SenderApp: Chiffre la clé AES avec la clé Signal
+    
+    SenderApp->>API: POST /api/v1/media/upload (média chiffré)
+    API->>MS: Transmission du média chiffré
+    MS->>MS: Stockage du média chiffré
+    MS-->>API: Retourne l'ID du média
+    API-->>SenderApp: Transmission de l'ID média
+    
+    SenderApp->>SenderApp: Inclut l'ID média + clé AES chiffrée dans le message
+    
+    Note over SenderApp: Le message avec référence<br/>au média est prêt à être envoyé

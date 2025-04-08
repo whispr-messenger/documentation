@@ -1,0 +1,31 @@
+sequenceDiagram
+    participant ReceiverApp as Application (Destinataire)
+    participant Receiver as Destinataire
+    participant API as API Gateway
+    participant MS as media-service
+    participant DS as delivery-service
+    participant SenderApp as Application (Expéditeur)
+    
+    ReceiverApp->>ReceiverApp: Réception du message chiffré
+    ReceiverApp->>ReceiverApp: Déchiffrement avec clé privée Signal
+    ReceiverApp->>ReceiverApp: Vérification de la signature
+    ReceiverApp->>ReceiverApp: Mise à jour de la session Signal (ratchet)
+    
+    alt Message avec média
+        ReceiverApp->>ReceiverApp: Déchiffre la clé AES avec clé Signal
+        ReceiverApp->>API: GET /api/v1/media/{mediaId}
+        API->>MS: Demande du média chiffré
+        MS-->>API: Retourne le média chiffré
+        API-->>ReceiverApp: Transmission du média chiffré
+        ReceiverApp->>ReceiverApp: Déchiffrement du média avec clé AES
+    end
+    
+    ReceiverApp-->>Receiver: Affichage du message déchiffré
+    
+    ReceiverApp->>API: POST /api/v1/messages/{messageId}/read
+    API->>DS: Marquage comme "lu"
+    DS->>DS: Mise à jour du statut "lu"
+    DS-->>SenderApp: Notification de lecture (via push)
+    SenderApp-->>SenderApp: Mise à jour du statut "lu"
+    
+    Note over ReceiverApp: Le déchiffrement assure la<br/>confidentialité de bout en bout
