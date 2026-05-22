@@ -1,0 +1,173 @@
+name: 🔔 Discord Documentation Notifications
+
+on:
+  push:
+    branches: [deploy/preprod, main]
+  pull_request:
+    types: [opened, reopened, closed, ready_for_review]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  notify-push:
+    name: Send Push Notification
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Extract push details
+        id: push
+        run: |
+          SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
+          AUTHOR="$GITHUB_ACTOR"
+          REF="${GITHUB_REF_NAME}"
+          COUNT=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -c '\.md$' || echo 0)
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "author=$AUTHOR" >> "$GITHUB_OUTPUT"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Send Discord notification
+        uses: tsickert/discord-webhook@v7.0.0
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          username: "GitHub Actions"
+          avatar-url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+          embed-title: "📄 Documentation updated"
+          embed-description: |
+            **${{ steps.push.outputs.count }} fichier(s) mis a jour** sur `${{ steps.push.outputs.ref }}`
+
+            🌿 Branch: \`${{ steps.push.outputs.ref }}\`
+            👤 Author: [${{ steps.push.outputs.author }}](https://github.com/${{ steps.push.outputs.author }})
+            📦 Commit: \`${{ steps.push.outputs.short_sha }}\`
+
+            [View commit →](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+          embed-url: https://github.com/${{ github.repository }}/commit/${{ github.sha }}
+          embed-color: 3447003
+          embed-thumbnail-url: https://github.com/${{ steps.push.outputs.author }}.png
+          embed-footer-text: "documentation • whispr-messenger"
+          embed-footer-icon-url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+
+  notify-pr:
+    name: Send PR Notification
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+
+    steps:
+      - name: Determine PR action details
+        id: pr_action
+        run: |
+          case "${{ github.event.action }}" in
+            "opened"|"reopened")
+              echo "color=3447003" >> "$GITHUB_OUTPUT"
+              echo "emoji=🆕" >> "$GITHUB_OUTPUT"
+              echo "text=opened" >> "$GITHUB_OUTPUT"
+              ;;
+            "closed")
+              if [ "${{ github.event.pull_request.merged }}" == "true" ]; then
+                echo "color=65280" >> "$GITHUB_OUTPUT"
+                echo "emoji=✅" >> "$GITHUB_OUTPUT"
+                echo "text=merged" >> "$GITHUB_OUTPUT"
+              else
+                echo "color=16711680" >> "$GITHUB_OUTPUT"
+                echo "emoji=❌" >> "$GITHUB_OUTPUT"
+                echo "text=closed" >> "$GITHUB_OUTPUT"
+              fi
+              ;;
+            "ready_for_review")
+              echo "color=3447003" >> "$GITHUB_OUTPUT"
+              echo "emoji=👀" >> "$GITHUB_OUTPUT"
+              echo "text=ready for review" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "color=9936031" >> "$GITHUB_OUTPUT"
+              echo "emoji=📝" >> "$GITHUB_OUTPUT"
+              echo "text=${{ github.event.action }}" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Extract commit SHA
+        id: commit
+        run: |
+          SHORT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Send Discord notification
+        uses: tsickert/discord-webhook@v7.0.0
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          username: "GitHub Actions"
+          avatar-url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+          embed-title: "${{ steps.pr_action.outputs.emoji }} Pull Request ${{ steps.pr_action.outputs.text }}"
+          embed-description: |
+            **PR #${{ github.event.pull_request.number }}**: ${{ github.event.pull_request.title }}
+
+            🌿 Branch: \`${{ github.event.pull_request.head.ref }}\` → \`${{ github.event.pull_request.base.ref }}\`
+            👤 Author: [${{ github.event.pull_request.user.login }}](${{ github.event.pull_request.user.html_url }})
+            📊 Changes: +${{ github.event.pull_request.additions }} -${{ github.event.pull_request.deletions }}
+            📦 Commit: \`${{ steps.commit.outputs.short_sha }}\`
+
+            [View Pull Request →](${{ github.event.pull_request.html_url }})
+          embed-url: ${{ github.event.pull_request.html_url }}
+          embed-color: ${{ steps.pr_action.outputs.color }}
+          embed-thumbnail-url: ${{ github.event.pull_request.user.avatar_url }}
+          embed-footer-text: "documentation • whispr-messenger"
+          embed-footer-icon-url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+          embed-timestamp: ${{ github.event.pull_request.created_at }}
+
+  notify-review:
+    name: Send Review Notification
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request_review' && github.event.review.state != 'commented'
+
+    steps:
+      - name: Determine review details
+        id: review_action
+        run: |
+          case "${{ github.event.review.state }}" in
+            "approved")
+              echo "color=65280" >> "$GITHUB_OUTPUT"
+              echo "emoji=✅" >> "$GITHUB_OUTPUT"
+              echo "text=approved" >> "$GITHUB_OUTPUT"
+              ;;
+            "changes_requested")
+              echo "color=16711680" >> "$GITHUB_OUTPUT"
+              echo "emoji=❌" >> "$GITHUB_OUTPUT"
+              echo "text=requested changes" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "color=9936031" >> "$GITHUB_OUTPUT"
+              echo "emoji=📝" >> "$GITHUB_OUTPUT"
+              echo "text=${{ github.event.review.state }}" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Send review notification
+        uses: tsickert/discord-webhook@v7.0.0
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          username: "GitHub Actions"
+          avatar-url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+          embed-title: "${{ steps.review_action.outputs.emoji }} PR Review ${{ steps.review_action.outputs.text }}"
+          embed-description: |
+            **PR #${{ github.event.pull_request.number }}**: ${{ github.event.pull_request.title }}
+
+            👤 Reviewer: [${{ github.event.review.user.login }}](${{ github.event.review.user.html_url }})
+            👤 Author: [${{ github.event.pull_request.user.login }}](${{ github.event.pull_request.user.html_url }})
+
+            [View Review →](${{ github.event.review.html_url }})
+          embed-url: ${{ github.event.review.html_url }}
+          embed-color: ${{ steps.review_action.outputs.color }}
+          embed-thumbnail-url: ${{ github.event.review.user.avatar_url }}
+          embed-footer-text: "documentation • whispr-messenger"
+          embed-footer-icon-url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+          embed-timestamp: ${{ github.event.review.submitted_at }}
