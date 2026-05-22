@@ -30,7 +30,7 @@ jobs:
           SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
           AUTHOR="$GITHUB_ACTOR"
           REF="${GITHUB_REF_NAME}"
-          COUNT=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -c '\.md$' || echo 0)
+          COUNT=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | grep '\.md$' | wc -l | tr -d ' ')
           echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
           echo "author=$AUTHOR" >> "$GITHUB_OUTPUT"
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
